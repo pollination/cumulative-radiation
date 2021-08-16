@@ -4,7 +4,6 @@ from pollination_dsl.dag import Inputs, DAG, task
 from dataclasses import dataclass
 
 from pollination.honeybee_radiance.grid import SplitGrid, MergeFiles
-from pollination.honeybee_radiance.contrib import DaylightContribution
 from pollination.honeybee_radiance.coefficient import DaylightCoefficient
 from pollination.honeybee_radiance.post_process import CumulativeRadiation
 
