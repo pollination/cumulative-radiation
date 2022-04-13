@@ -185,7 +185,7 @@ class CumulativeRadiationEntryPoint(DAG):
         needs=[create_sky_dome, create_octree, create_sky,
                create_rad_folder, split_grid_folder],
         loop=split_grid_folder._outputs.sensor_grids,
-        sub_folder='initial_results/{{item.full_id}}',  # create a subfolder for each grid
+        sub_folder='initial_results/{{item.full_id}}',  # subfolder for each grid
         sub_paths={'sensor_grid': '{{item.full_id}}.pts'}
     )
     def sky_radiation_raytracing(
