@@ -7,7 +7,8 @@ over the time period of a specified Wea.
 
 ## Limitations
 
-This recipe uses Radiance's `gendaymtx` to generate the sky.
+This recipe uses Radiance's `gendaymtx` to generate the sky instead of directly
+tracing the line of sight from sensors to the solar position.
 
 ```console
 Gendaymtx takes a weather tape as input and produces a matrix of sky patch values
