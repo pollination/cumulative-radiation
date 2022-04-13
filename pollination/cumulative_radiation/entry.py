@@ -7,6 +7,8 @@ from pollination.honeybee_radiance.sky import CreateSkyDome, CreateSkyMatrix
 from pollination.honeybee_radiance.coefficient import DaylightCoefficient
 from pollination.honeybee_radiance.post_process import CumulativeRadiation
 from pollination.path.copy import Copy
+from pollination.honeybee_radiance.post_process import CumulativeRadiationConfig
+from pollination.honeybee_vtk.translate import Translate as TranslateVTKJS
 
 
 # input/output alias
@@ -236,6 +238,35 @@ class CumulativeRadiationEntryPoint(DAG):
                 'to': 'results/cumulative_radiation/{{item.name}}.res'
             }
         ]
+
+    @task(template=CumulativeRadiationConfig)
+    def write_radiation_config_file(self):
+        return [
+            {
+                'from': CumulativeRadiationConfig()._outputs.cfg_file,
+                'to': 'results/config.json'
+            }
+        ]
+
+    @task(
+        template=TranslateVTKJS,
+        needs=[accumulate_results, write_radiation_config_file]
+    )
+    def create_vtkjs(
+        self, hbjson_file=model, file_type='vtkjs', grid_options='points',
+        data='results'
+    ):
+        return [
+            {
+                'from': TranslateVTKJS()._outputs.output_file,
+                'to': 'visualization/radiation.vtkjs'
+            }
+        ]
+
+    visualization = Outputs.file(
+        source='visualization/radiation.vtkjs',
+        description='Results visualization in 3D in vtkjs format.'
+    )
 
     average_irradiance = Outputs.folder(
         source='results/average_irradiance', description='The average irradiance in '
