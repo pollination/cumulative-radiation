@@ -253,7 +253,7 @@ class CumulativeRadiationEntryPoint(DAG):
         needs=[accumulate_results, write_radiation_config_file]
     )
     def create_vtkjs(
-        self, hbjson_file=model, file_type='vtkjs', grid_options='points',
+        self, hbjson_file=model, file_type='vtkjs', grid_options='meshes',
         data='results'
     ):
         return [
