@@ -1,4 +1,4 @@
-from pollination_dsl.dag import Inputs, DAG, task, Outputs
+from pollination_dsl.dag import Inputs, GroupedDAG, task, Outputs
 from dataclasses import dataclass
 from pollination.honeybee_radiance.translate import CreateRadianceFolderGrid
 from pollination.honeybee_radiance.grid import SplitGridFolder, MergeFolderData
@@ -19,13 +19,10 @@ from pollination.alias.inputs.radiancepar import rad_par_annual_input
 from pollination.alias.outputs.daylight import average_irradiance_results, \
     cumulative_radiation_results
 
-from ._prepare_folder import CumulativeRadiationPrepareFolder
-from ._postprocess import CumulativeRadiationPostprocess
-
 
 @dataclass
-class CumulativeRadiationEntryPoint(DAG):
-    """Cumulative Radiation entry point."""
+class CumulativeRadiationPrepareFolder(GroupedDAG):
+    """Prepare folder for cumulative radiation."""
 
     # inputs
     timestep = Inputs.int(
@@ -97,102 +94,99 @@ class CumulativeRadiationEntryPoint(DAG):
         alias=wea_input
     )
 
-    @task(template=CumulativeRadiationPrepareFolder)
-    def prepare_folder_cumulative_radiation(
-        self, timestep=timestep, north=north,
-        cpu_count=cpu_count, min_sensor_count=min_sensor_count,
-        grid_filter=grid_filter, sky_density=sky_density, model=model, wea=wea
-    ):
+    @task(template=CreateRadianceFolderGrid, annotations={'main_task': True})
+    def create_rad_folder(self, input_model=model, grid_filter=grid_filter):
+        """Translate the input model to a radiance folder."""
         return [
             {
-                'from': CumulativeRadiationPrepareFolder()._outputs.model_folder,
+                'from': CreateRadianceFolderGrid()._outputs.model_folder,
                 'to': 'model'
             },
             {
-                'from': CumulativeRadiationPrepareFolder()._outputs.resources,
-                'to': 'resources'
+                'from': CreateRadianceFolderGrid()._outputs.bsdf_folder,
+                'to': 'model/bsdf'
             },
             {
-                'from': CumulativeRadiationPrepareFolder()._outputs.initial_results,
-                'to': 'initial_results'
-            },
+                'from': CreateRadianceFolderGrid()._outputs.sensor_grids_file,
+                'to': 'results/average_irradiance/grids_info.json'
+            }
+        ]
+
+    @task(template=Copy, needs=[create_rad_folder])
+    def copy_grid_info(self, src=create_rad_folder._outputs.sensor_grids_file):
+        return [
             {
-                'from': CumulativeRadiationPrepareFolder()._outputs.sensor_grids
-            },
+                'from': Copy()._outputs.dst,
+                'to': 'results/cumulative_radiation/grids_info.json'
+            }
+        ]
+
+    @task(template=CreateOctree, needs=[create_rad_folder])
+    def create_octree(
+        self, model=create_rad_folder._outputs.model_folder
+    ):
+        """Create octree from radiance folder."""
+        return [
             {
-                'from': CumulativeRadiationPrepareFolder()._outputs.grids_info
+                'from': CreateOctree()._outputs.scene_file,
+                'to': 'resources/scene.oct'
             }
         ]
 
     @task(
-        template=DaylightCoefficient,
-        needs=[prepare_folder_cumulative_radiation],
-        loop=prepare_folder_cumulative_radiation._outputs.sensor_grids,
-        sub_folder='initial_results/{{item.full_id}}',  # subfolder for each grid
-        sub_paths={
-            'sky_dome': 'sky.dome',
-            'sky_matrix': 'sky.mtx',
-            'scene_file': 'scene.oct',
-            'sensor_grid': 'grid/{{item.full_id}}.pts',
-            'bsdf_folder': 'bsdf'
-            }
+        template=SplitGridFolder, needs=[create_rad_folder],
+        sub_paths={'input_folder': 'grid'}
     )
-    def sky_radiation_raytracing(
-        self,
-        radiance_parameters=radiance_parameters,
-        fixed_radiance_parameters='-aa 0.0 -I -c 1',
-        sensor_count='{{item.count}}',
-        sky_dome=prepare_folder_cumulative_radiation._outputs.resources,
-        sky_matrix=prepare_folder_cumulative_radiation._outputs.resources,
-        scene_file=prepare_folder_cumulative_radiation._outputs.resources,
-        sensor_grid=prepare_folder_cumulative_radiation._outputs.resources,
-        conversion='0.265 0.670 0.065',
-        output_format='a',
-        bsdf_folder=prepare_folder_cumulative_radiation._outputs.model_folder
+    def split_grid_folder(
+        self, input_folder=create_rad_folder._outputs.model_folder,
+        cpu_count=cpu_count, cpus_per_grid=1, min_sensor_count=min_sensor_count
+    ):
+        """Split sensor grid folder based on the number of CPUs"""
+        return [
+            {
+                'from': SplitGridFolder()._outputs.output_folder,
+                'to': 'resources/grid'
+            },
+            {
+                'from': SplitGridFolder()._outputs.dist_info,
+                'to': 'initial_results/_redist_info.json'
+            }
+        ]
+
+    @task(template=CreateSkyDome)
+    def create_sky_dome(self, sky_density=sky_density):
+        """Create sky dome for daylight coefficient studies."""
+        return [
+            {
+                'from': CreateSkyDome()._outputs.sky_dome,
+                'to': 'resources/sky.dome'
+            }
+        ]
+
+    @task(template=CreateSkyMatrix)
+    def create_sky(
+        self, north=north, wea=wea, sky_type='total', output_type='solar',
+        output_format='ASCII', sky_density=sky_density, cumulative='cumulative'
     ):
         return [
             {
-                'from': DaylightCoefficient()._outputs.result_file,
-                'to': '../{{item.name}}.res'
+                'from': CreateSkyMatrix()._outputs.sky_matrix,
+                'to': 'resources/sky.mtx'
             }
         ]
 
-    @task(
-        template=MergeFolderData,
-        needs=[sky_radiation_raytracing]
-    )
-    def restructure_results(self, input_folder='initial_results', extension='res'):
-        return [
-            {
-                'from': MergeFolderData()._outputs.output_folder,
-                'to': 'results/average_irradiance'
-            }
-        ]
-
-    @task(
-        template=CumulativeRadiation,
-        needs=[prepare_folder_cumulative_radiation, restructure_results],
-        loop=prepare_folder_cumulative_radiation._outputs.grids_info,
-        sub_paths={'average_irradiance': '{{item.name}}.res'}
-    )
-    def accumulate_results(
-        self, average_irradiance=restructure_results._outputs.output_folder,
-        wea=wea, timestep=timestep
-    ):
-        return [
-            {
-                'from': CumulativeRadiation()._outputs.radiation,
-                'to': 'results/cumulative_radiation/{{item.name}}.res'
-            }
-        ]
-
-    average_irradiance = Outputs.folder(
-        source='results/average_irradiance', description='The average irradiance in '
-        'W/m2 for each sensor over the Wea time period.',
-        alias=average_irradiance_results
+    model_folder = Outputs.folder(
+        source='model', description='input model folder folder.'
     )
 
-    cumulative_radiation = Outputs.folder(
-        source='results/cumulative_radiation', description='The cumulative radiation '
-        'in kWh/m2 over the Wea time period.', alias=cumulative_radiation_results
+    resources = Outputs.folder(
+        source='resources', description='resources folder.'
     )
+
+    initial_results = Outputs.folder(
+        source='initial_results', description='initial results folder.'
+    )
+
+    sensor_grids = Outputs.list(source='resources/grid/_info.json')
+
+    grids_info = Outputs.list(source='results/average_irradiance/grids_info.json')
