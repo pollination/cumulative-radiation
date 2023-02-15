@@ -2,7 +2,9 @@ from pollination_dsl.dag import Inputs, DAG, task, Outputs
 from dataclasses import dataclass
 from pollination.honeybee_radiance.grid import MergeFolderData
 from pollination.honeybee_radiance.coefficient import DaylightCoefficient
-from pollination.honeybee_radiance.post_process import CumulativeRadiation
+from pollination.honeybee_radiance.post_process import CumulativeRadiation, \
+    CumulativeRadiationVisMetadata, AverageIrradianceVisMetadata
+from pollination.honeybee_display.translate import ModelToVis
 
 
 # input/output alias
@@ -181,6 +183,49 @@ class CumulativeRadiationEntryPoint(DAG):
         wea=wea, timestep=timestep
     ):
         pass
+
+    @task(
+        template=CumulativeRadiationVisMetadata
+    )
+    def create_cumulative_radiation_vis_metadata(self):
+        return [
+            {
+                'from': CumulativeRadiationVisMetadata()._outputs.cfg_file,
+                'to': 'results/cumulative_radiation/vis_metadata.json'
+            }
+        ]
+
+    @task(
+        template=AverageIrradianceVisMetadata
+    )
+    def create_average_irradiance_vis_metadata(self):
+        return [
+            {
+                'from': AverageIrradianceVisMetadata()._outputs.cfg_file,
+                'to': 'results/average_irradiance/vis_metadata.json'
+            }
+        ]
+
+    @task(
+        template=ModelToVis,
+        needs=[accumulate_results, create_cumulative_radiation_vis_metadata,
+               create_average_irradiance_vis_metadata]
+    )
+    def create_vsf(
+        self, model=model, grid_data='results', output_format='vsf',
+        active_grid_data='cumulative_radiation'
+    ):
+        return [
+            {
+                'from': ModelToVis()._outputs.output_file,
+                'to': 'visualization.vsf'
+            }
+        ]
+
+    visualization = Outputs.file(
+        source='visualization.vsf',
+        description='Result visualization in VisualizationSet format.'
+    )
 
     average_irradiance = Outputs.folder(
         source='results/average_irradiance', description='The average irradiance in '
