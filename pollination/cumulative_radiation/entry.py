@@ -108,6 +108,10 @@ class CumulativeRadiationEntryPoint(DAG):
                 'to': 'resources'
             },
             {
+                'from': CumulativeRadiationPrepareFolder()._outputs.results,
+                'to': 'results'
+            },
+            {
                 'from': CumulativeRadiationPrepareFolder()._outputs.initial_results,
                 'to': 'initial_results'
             },
