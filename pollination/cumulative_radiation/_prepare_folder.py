@@ -181,6 +181,10 @@ class CumulativeRadiationPrepareFolder(GroupedDAG):
         source='resources', description='resources folder.'
     )
 
+    results = Outputs.folder(
+        source='results', description='results folder.'
+    )
+
     initial_results = Outputs.folder(
         source='initial_results', description='initial results folder.'
     )
