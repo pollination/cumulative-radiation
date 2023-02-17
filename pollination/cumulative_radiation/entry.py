@@ -16,6 +16,7 @@ from pollination.alias.outputs.daylight import average_irradiance_results, \
     cumulative_radiation_results
 
 from ._prepare_folder import CumulativeRadiationPrepareFolder
+from ._cumulative_radiation import CumulativeRadiationPostprocess
 
 
 @dataclass
@@ -169,21 +170,17 @@ class CumulativeRadiationEntryPoint(DAG):
         ]
 
     @task(
-        template=CumulativeRadiation,
+        template=CumulativeRadiationPostprocess,
         needs=[prepare_folder_cumulative_radiation, restructure_results],
         loop=prepare_folder_cumulative_radiation._outputs.grids_info,
         sub_paths={'average_irradiance': '{{item.full_id}}.res'}
     )
-    def accumulate_results(
-        self, average_irradiance=restructure_results._outputs.output_folder,
+    def cumulative_radiation_postprocess(
+        self, grid_name='{{item.full_id}}',
+        average_irradiance=restructure_results._outputs.output_folder,
         wea=wea, timestep=timestep
     ):
-        return [
-            {
-                'from': CumulativeRadiation()._outputs.radiation,
-                'to': 'results/cumulative_radiation/{{item.full_id}}.res'
-            }
-        ]
+        pass
 
     average_irradiance = Outputs.folder(
         source='results/average_irradiance', description='The average irradiance in '
