@@ -208,7 +208,7 @@ class CumulativeRadiationEntryPoint(DAG):
 
     @task(
         template=ModelToVis,
-        needs=[accumulate_results, create_cumulative_radiation_vis_metadata,
+        needs=[cumulative_radiation_postprocess, create_cumulative_radiation_vis_metadata,
                create_average_irradiance_vis_metadata]
     )
     def create_vsf(
